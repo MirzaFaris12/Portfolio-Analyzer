@@ -3,19 +3,21 @@ import pandas as pd
 import numpy as np
 
 def get_daily_returns(tickers, period="6mo"):
-    price_data = yf.download(tickers, period=period, interval="1d", group_by='ticker', auto_adjust=True, progress=False)
-    
-    # If only one ticker, ensure consistent format
-    if isinstance(price_data.columns, pd.Index):
-        price_data = pd.concat([price_data['Close']], axis=1, keys=tickers)
+    data = yf.download(tickers, period=period, interval="1d", group_by='ticker', auto_adjust=True, progress=False)
+
+    if isinstance(tickers, str) or len(tickers) == 1:
+        # Handle single ticker
+        ticker = tickers[0] if isinstance(tickers, list) else tickers
+        prices = data["Close"].to_frame(name=ticker)
     else:
-        price_data = price_data['Close']
-    
-    daily_returns = price_data.pct_change().dropna()
+        # Multiple tickers: extract Close price for each
+        prices = pd.concat([data[ticker]["Close"].rename(ticker) for ticker in tickers], axis=1)
+
+    daily_returns = prices.pct_change().dropna()
     return daily_returns
 
 def calculate_volatility(daily_returns):
-    return daily_returns.std() * np.sqrt(252)  # Annualized volatility
+    return daily_returns.std() * np.sqrt(252)
 
 def calculate_correlation_matrix(daily_returns):
     return daily_returns.corr()
