@@ -43,6 +43,9 @@ with st.expander("📘 How to Use This App", expanded=False):
     6. **Improvement Suggestions**  
        - ❌ Flags stocks that are too volatile, too correlated, or underperforming  
        - ➕ Recommends adding ETFs from sectors you’re missing
+
+    7. **Scenario Simulation**  
+       Test adding or removing stocks to see how it changes your portfolio's performance.
     """)
 
 # 📁 File Upload
@@ -113,7 +116,90 @@ if uploaded_file:
             st.write("⚠️", msg)
     else:
         st.success("✅ No risky holdings flagged for removal.")
+
+    # 🧪 Scenario Simulation
+    st.subheader("🧪 Scenario Simulation")
+
+    with st.form("scenario_sim"):
+        sim_ticker = st.text_input("Ticker (e.g., TSLA)")
+        sim_action = st.selectbox("Action", ["Add", "Remove"])
+        sim_shares = st.number_input("Number of Shares", min_value=1, step=1)
+        sim_submit = st.form_submit_button("Run Simulation")
+
+    sim_df = combined_df.copy()
+
+    if sim_submit and sim_ticker:
+        sim_ticker = sim_ticker.upper()
+
+        if sim_ticker in sim_df["Ticker"].values:
+            idx = sim_df[sim_df["Ticker"] == sim_ticker].index[0]
+
+            if sim_action == "Add":
+                sim_df.at[idx, "Shares"] += sim_shares
+            elif sim_action == "Remove":
+                sim_df.at[idx, "Shares"] = max(0, sim_df.at[idx, "Shares"] - sim_shares)
+        else:
+            if sim_action == "Add":
+                sim_data = fetch_market_data([sim_ticker])
+                if not sim_data.empty and sim_data["Price"].iloc[0] > 0:
+                    new_row = {
+                        "Ticker": sim_ticker,
+                        "Shares": sim_shares,
+                        "Price": sim_data["Price"].iloc[0],
+                        "Sector": sim_data["Sector"].iloc[0]
+                    }
+                    sim_df = pd.concat([sim_df, pd.DataFrame([new_row])], ignore_index=True)
+                else:
+                    st.error("❌ Invalid or unsupported ticker.")
+                    sim_df = None
+            else:
+                st.warning("⚠️ Ticker not in portfolio.")
+                sim_df = None
+
+        if sim_df is not None:
+            sim_df["Market Value"] = sim_df["Shares"] * sim_df["Price"]
+            new_total = sim_df["Market Value"].sum()
+            sim_df["Allocation %"] = 100 * sim_df["Market Value"] / new_total
+
+            st.markdown("### 🔁 Simulated Portfolio")
+            st.dataframe(sim_df)
+
+            sim_returns = get_daily_returns(sim_df["Ticker"].tolist())
+            sim_vol = calculate_volatility(sim_returns)
+            sim_sharpe = calculate_sharpe_ratio(sim_returns)
+            sim_corr = calculate_correlation_matrix(sim_returns)
+            sim_avg_corr = calculate_avg_correlations(sim_corr)
+            sim_vol_rank = rank_volatility(sim_vol)
+
+            st.markdown("### 📉 Simulated Risk Metrics")
+            st.dataframe(pd.DataFrame({
+                "Volatility": sim_vol,
+                "Sharpe": sim_sharpe,
+                "Avg Correlation": sim_avg_corr,
+                "Vol Rank": sim_vol_rank
+            }))
+
+            sim_suggestions = suggest_add_remove(
+                sim_df, sim_vol, sim_vol_rank, sim_sharpe, sim_avg_corr
+            )
+
+            st.markdown("### 🧠 Simulated Improvement Suggestions")
+            if sim_suggestions["add"]:
+                st.markdown("#### ➕ Additions")
+                for msg in sim_suggestions["add"]:
+                    st.write("🔹", msg)
+            else:
+                st.success("✅ No new sector gaps.")
+
+            if sim_suggestions["remove"]:
+                st.markdown("#### ➖ Reductions")
+                for msg in sim_suggestions["remove"]:
+                    st.write("⚠️", msg)
+            else:
+                st.success("✅ No risky holdings detected.")
+
 else:
     st.info("📁 Upload a CSV file with columns: Ticker, Shares")
+
 
 
