@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import io
+import plotly.express as px
 from data import fetch_market_data
 from portfolio import compute_portfolio_metrics, rebalance_portfolio
 from visualizations import plot_allocation_pie
@@ -17,42 +19,27 @@ from advisor import suggest_add_remove
 st.set_page_config(page_title="💼 Portfolio Health Analyzer", layout="wide")
 st.title("💼 Portfolio Health Analyzer")
 
-# --- Simulation state ---
+# --- Session State ---
 if "sim_active" not in st.session_state:
     st.session_state.sim_active = False
 
-# 📘 App Guide
+# 📘 Guide
 with st.expander("📘 How to Use This App", expanded=False):
     st.markdown("""
-    Welcome to the **Portfolio Health Analyzer**! This app helps you understand your investment portfolio and make smarter decisions.
+    ### ✅ Upload CSV or Input Tickers
+    - Upload your portfolio as CSV (`Ticker`, `Shares`)
+    - Or use the P&L Forecaster to test without a file
 
-    ### ✅ How to Use:
-    1. **Upload CSV File**  
-       Upload a `.csv` with two columns: `Ticker` and `Shares` (e.g., AAPL, 10).
-
-    2. **Portfolio Allocation**  
-       Visual pie chart showing the % of each asset in your portfolio.
-
-    3. **Portfolio Overview**  
-       Table showing live prices, value per stock, and your current allocation.
-
-    4. **Rebalancing Suggestions**  
-       Enter your target allocation (e.g., `AAPL:40, MSFT:60`) and the app shows how much to buy/sell to reach that goal.
-
-    5. **Risk Analysis**  
-       - 📉 Volatility: How risky each stock is  
-       - ⚖️ Sharpe Ratio: Return per unit of risk  
-       - 🔗 Correlation Matrix: How your assets move together
-
-    6. **Improvement Suggestions**  
-       - ❌ Flags stocks that are too volatile, too correlated, or underperforming  
-       - ➕ Recommends adding ETFs from sectors you’re missing
-
-    7. **Scenario Simulation**  
-       Test adding or removing stocks to see how it changes your portfolio's performance.
+    ### 🔍 Features:
+    - 📊 Allocation and portfolio table
+    - 📈 Rebalancing suggestions
+    - 📉 Risk analysis (volatility, correlation, Sharpe)
+    - 🧠 Risk-based improvement suggestions
+    - 🧪 Scenario simulation with reset
+    - 💹 P&L forecast with custom change and shares
     """)
 
-# 📁 File Upload
+# 📁 Upload CSV
 uploaded_file = st.file_uploader("Upload Portfolio CSV (Ticker, Shares)", type="csv")
 
 if uploaded_file:
@@ -73,10 +60,9 @@ if uploaded_file:
         rebalance_df = rebalance_portfolio(combined_df, target_dict, total_value)
         st.dataframe(rebalance_df)
     except:
-        st.warning("⚠️ Please enter a valid allocation format (e.g., AAPL:40, MSFT:60)")
+        st.warning("⚠️ Invalid format. Use AAPL:40, MSFT:60")
 
     st.subheader("📉 Risk Analysis")
-
     daily_returns = get_daily_returns(df['Ticker'].tolist())
     volatility = calculate_volatility(daily_returns)
     sharpe = calculate_sharpe_ratio(daily_returns)
@@ -97,10 +83,7 @@ if uploaded_file:
         st.dataframe(corr_matrix)
 
     st.subheader("🧠 Portfolio Improvement Suggestions (Risk-Based)")
-
-    suggestions = suggest_add_remove(
-        combined_df, volatility, vol_rank, sharpe, avg_corr
-    )
+    suggestions = suggest_add_remove(combined_df, volatility, vol_rank, sharpe, avg_corr)
 
     if suggestions["add"]:
         st.markdown("### ➕ Suggested Additions")
@@ -116,9 +99,8 @@ if uploaded_file:
     else:
         st.success("✅ No risky holdings flagged for removal.")
 
-    # --- Simulation Section ---
+    # --- Scenario Simulation ---
     st.subheader("🧪 Scenario Simulation")
-
     with st.form("scenario_sim"):
         sim_ticker = st.text_input("Ticker (e.g., TSLA)")
         sim_action = st.selectbox("Action", ["Add", "Remove"])
@@ -160,7 +142,6 @@ if uploaded_file:
                 st.warning("⚠️ Ticker not in portfolio.")
                 sim_df = None
 
-    # Show Simulated Results
     if st.session_state.sim_active and sim_df is not None:
         sim_df["Market Value"] = sim_df["Shares"] * sim_df["Price"]
         new_total = sim_df["Market Value"].sum()
@@ -184,9 +165,7 @@ if uploaded_file:
             "Vol Rank": sim_vol_rank
         }))
 
-        sim_suggestions = suggest_add_remove(
-            sim_df, sim_vol, sim_vol_rank, sim_sharpe, sim_avg_corr
-        )
+        sim_suggestions = suggest_add_remove(sim_df, sim_vol, sim_vol_rank, sim_sharpe, sim_avg_corr)
 
         st.markdown("### 🧠 Simulated Improvement Suggestions")
         if sim_suggestions["add"]:
@@ -195,7 +174,6 @@ if uploaded_file:
                 st.write("🔹", msg)
         else:
             st.success("✅ No new sector gaps.")
-
         if sim_suggestions["remove"]:
             st.markdown("#### ➖ Reductions")
             for msg in sim_suggestions["remove"]:
@@ -203,8 +181,79 @@ if uploaded_file:
         else:
             st.success("✅ No risky holdings detected.")
 
-else:
-    st.info("📁 Upload a CSV file with columns: Ticker, Shares")
+# 📉 Quick Profit/Loss Forecast (No CSV Required)
+st.subheader("📉 Quick Profit/Loss Forecast (No CSV Needed)")
+
+forecast_raw = st.text_area(
+    "Enter expected % change and optional shares per ticker (e.g., AAPL:10:20, TSLA:-5:15)",
+    placeholder="TICKER:CHANGE[:SHARES]",
+)
+
+if forecast_raw:
+    try:
+        forecast_data = {}
+        for item in forecast_raw.split(","):
+            parts = item.strip().split(":")
+            ticker = parts[0].upper()
+            change = float(parts[1])
+            shares = int(parts[2]) if len(parts) > 2 else 10
+            forecast_data[ticker] = (change, shares)
+
+        tickers = list(forecast_data.keys())
+        market_data = fetch_market_data(tickers)
+
+        if market_data.empty:
+            st.error("❌ Could not fetch market data.")
+        else:
+            df = market_data.copy()
+            df["Expected Change (%)"] = df["Ticker"].map(lambda t: forecast_data[t][0])
+            df["Shares"] = df["Ticker"].map(lambda t: forecast_data[t][1])
+            df["Predicted Price"] = df["Price"] * (1 + df["Expected Change (%)"] / 100)
+            df["Current Value"] = df["Price"] * df["Shares"]
+            df["Predicted Value"] = df["Predicted Price"] * df["Shares"]
+            df["P&L ($)"] = df["Predicted Value"] - df["Current Value"]
+            df["P&L (%)"] = (df["P&L ($)"] / df["Current Value"]) * 100
+
+            total_current = df["Current Value"].sum()
+            total_predicted = df["Predicted Value"].sum()
+            total_gain = total_predicted - total_current
+            total_pct = (total_gain / total_current) * 100
+
+            st.markdown("### 📊 Forecast Table")
+            st.dataframe(df[[
+                "Ticker", "Shares", "Price", "Expected Change (%)", "Predicted Price",
+                "Current Value", "Predicted Value", "P&L ($)", "P&L (%)"
+            ]])
+
+            st.markdown("### 📉 Forecast Chart")
+            chart = px.bar(
+                df,
+                x="Ticker",
+                y="P&L ($)",
+                color="P&L ($)",
+                color_continuous_scale=["red", "gray", "green"],
+                title="Predicted Profit or Loss per Stock"
+            )
+            st.plotly_chart(chart, use_container_width=True)
+
+            csv = df.to_csv(index=False)
+            st.download_button(
+                "📥 Download Forecast CSV",
+                data=csv,
+                file_name="pnl_forecast.csv",
+                mime="text/csv"
+            )
+
+            st.markdown(f"""
+            ### 📈 Total Forecast
+            - **Total Current Value**: ${total_current:,.2f}  
+            - **Predicted Value**: ${total_predicted:,.2f}  
+            - **Estimated P&L**: ${total_gain:,.2f} ({total_pct:.2f}%)
+            """)
+
+    except Exception as e:
+        st.error("⚠️ Invalid input format. Use `TICKER:CHANGE[:SHARES]` (e.g., AAPL:10, TSLA:-5:15)")
+        st.exception(e)
 
 
 
