@@ -4,7 +4,7 @@ from data import fetch_market_data
 from portfolio import compute_portfolio_metrics, rebalance_portfolio
 from visualizations import plot_allocation_pie
 from utils import clean_uploaded_file
-
+from risk import get_daily_returns, calculate_volatility, calculate_correlation_matrix
 
 st.set_page_config(page_title="💼 Portfolio Health Analyzer", layout="wide")
 st.title("💼 Portfolio Health Analyzer")
@@ -27,5 +27,19 @@ if uploaded_file:
     target_dict = {item.split(":")[0].strip(): float(item.split(":")[1]) for item in target_allocation.split(",")}
     rebalance_df = rebalance_portfolio(combined_df, target_dict, total_value)
     st.dataframe(rebalance_df)
+
+    st.subheader("📉 Risk Analysis")
+
+    daily_returns = get_daily_returns(df['Ticker'].tolist())
+    volatility = calculate_volatility(daily_returns)
+    corr_matrix = calculate_correlation_matrix(daily_returns)
+
+    st.markdown("**📌 Annualized Volatility**")
+    st.dataframe(volatility.rename("Volatility (σ)").to_frame())
+
+    st.markdown("**📌 Asset Correlation Matrix**")
+    st.dataframe(corr_matrix.style.background_gradient(cmap='coolwarm', axis=None))
+
 else:
-    st.info("Upload a CSV to get started.")
+    st.info("📁 Upload a CSV file with columns: Ticker, Shares")
+
