@@ -61,3 +61,18 @@ Ticker,Shares
 AAPL,10
 MSFT,8
 TSLA,5
+
+🧪 Forecast Without Upload (Optional)
+You can test predictions without a file by entering:
+
+makefile
+Copy
+Edit
+AAPL:10, MSFT:-5:20, TSLA:15
+Format: TICKER:CHANGE[:SHARES]
+
+AAPL:10 → +10% with default 10 shares
+
+MSFT:-5:20 → –5% change with 20 shares
+
+App will estimate portfolio value change, per-stock gain/loss, and chart
