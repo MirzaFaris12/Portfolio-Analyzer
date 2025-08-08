@@ -9,6 +9,40 @@ from risk import get_daily_returns, calculate_volatility, calculate_correlation_
 st.set_page_config(page_title="💼 Portfolio Health Analyzer", layout="wide")
 st.title("💼 Portfolio Health Analyzer")
 
+with st.expander("📘 How to Use This App", expanded=False):
+    st.markdown("""
+    Welcome to the **Portfolio Health Analyzer**! This app helps you understand your investment portfolio and make smarter decisions.
+
+    ### ✅ How to Use:
+    1. **Upload CSV File**  
+       Upload a `.csv` with two columns: `Ticker` and `Shares` (e.g., AAPL, 10).
+
+    2. **Portfolio Allocation**  
+       Visual pie chart showing the % of each asset in your portfolio.
+
+    3. **Portfolio Overview**  
+       Table showing live prices, value per stock, and your current allocation.
+
+    4. **Rebalancing Suggestions**  
+       Enter your target allocation (e.g., `AAPL:50, MSFT:50`) and the app shows how much to buy/sell to reach that goal.
+
+    5. **Risk Analysis**  
+       - 📉 Annualized Volatility: How risky each stock is based on price fluctuations  
+       - 🔗 Correlation Matrix: How your assets move together (1 = highly correlated)
+
+    > 💡 Tip: Diversify by reducing high correlations and spreading across sectors.
+
+    ---
+    **Sample CSV Format:**
+    ```
+    Ticker,Shares
+    AAPL,10
+    MSFT,8
+    GOOGL,5
+    ```
+    """)
+
+
 uploaded_file = st.file_uploader("Upload Portfolio CSV (Ticker, Shares)", type="csv")
 
 if uploaded_file:
